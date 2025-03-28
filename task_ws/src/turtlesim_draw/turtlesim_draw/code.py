@@ -3,6 +3,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from turtlesim.srv import SetPen, Spawn, Kill
 import math
+import time
 
 class TurtleDraw(Node):
     def __init__(self):
@@ -11,10 +12,7 @@ class TurtleDraw(Node):
         self.pen_client = self.create_client(SetPen, '/turtle1/set_pen')
         self.spawn_client = self.create_client(Spawn, 'spawn')
         self.kill_client = self.create_client(Kill, 'kill')    
-        self.current_x = 0
-        self.current_y = 0
-        self.current_theta = 0.0  # radians, facing right
-        self.pen_is_down = True
+
 
     def set_pen(self, r=255, g=255, b=255, width=2, off=False):
         while not self.pen_client.wait_for_service(timeout_sec=1.0):
@@ -28,79 +26,109 @@ class TurtleDraw(Node):
         self.pen_is_down = not off
         self.pen_client.call_async(req)
 
-    def draw_line(self, end_x, end_y, speed=1.0):
-        """Draw line from current position to specified end coordinates"""
-        dx = end_x - self.current_x
-        dy = end_y - self.current_y
-        distance = math.sqrt(math.pow(dx,2)+math.pow(dy,2))
-        target_angle = math.atan2(dy, dx)
-        
-        # Calculate required rotation
-        angle_diff = target_angle - self.current_theta
-        angle_diff = (angle_diff + math.pi) % (2 * math.pi) - math.pi  # Normalize to [-π, π]
-        
-        # Rotate to face target
-        if abs(angle_diff) > 1e-3:
-            self._rotate(angle_diff)
-        
-        # Move forward
-        self._move_straight(distance, speed)
-        
-        # Update position
-        self.current_x = end_x
-        self.current_y = end_y
+    def turn(self, angle):
+        msg = Twist()
+        msg.angular.z = math.radians(angle)
+        self.publisher_.publish(msg)
+        time.sleep(abs(angle) / 90.0)  # Approximate turn timing
+        msg.angular.z = 0.0
+        self.publisher_.publish(msg)
+        time.sleep(0.5)
 
-    def draw_circle(self, center_x, center_y, radius, speed=1.0):
+    def draw_line(self, distance, speed=1.0):
+        msg = Twist()
+        msg.linear.x = speed
+        self.publisher_.publish(msg)
+        time.sleep(distance/speed)
+        msg.linear.x = 0.0
+        self.publisher_.publish(msg)
+        
+
+    def draw_sq(self,side):
+         for _ in range(4):
+            self.draw_line(side)
+            self.turn(90)
+
+    def draw_circle(self, radius, speed=1.0):
         """Draw circle around specified center coordinates with given radius"""
-        was_pen_down = self.pen_is_down
         """
             Write your logic for drawing circle here.
             Below is a code segment just to guide you, how to execute your logic
         """
-        # Set up circular motion
-        self.set_pen(off=not was_pen_down)
+        """# Set up circular motion
         angular_speed = speed / radius
-        duration = 2 * math.pi * radius / speed
+        duration = ((2 * math.pi * radius) / speed)
         
         # Execute movement
         msg = Twist()
         msg.linear.x = speed
         msg.angular.z = angular_speed
         self.publisher_.publish(msg)
-        rclpy.spin_once(self, timeout_sec=duration)
-
-    def _rotate(self):
-        """
-            Rotate by specified radians (positive counter-clockwise)
-            Write code by yourself
-        """
-
-    def _move_straight(self, distance, speed):
-        """
-            Move straight for specified distance
-            Write code by yourself
-        """
-
-    def _face_angle(self):
-        """
-            Rotate to face specified angle (radians)
-            Write code by yourself
-        """
-
+        time.sleep(duration)
+        msg.linear.x=0.0
+        msg.angular=0.0
+        self.publisher_.publish(msg)"""
+        circumference = 2 * math.pi * radius
+        speed = 1.0
+        angular_speed = speed / radius
+        duration = (circumference/speed)
+        msg = Twist()
+        msg.linear.x = speed
+        msg.angular.z = angular_speed
+        
+        self.get_logger().info(f'Drawing circle with radius {radius}')
+        start_time = self.get_clock().now().seconds_nanoseconds()[0]
+        while self.get_clock().now().seconds_nanoseconds()[0] - start_time < duration:
+            self.publisher_.publish(msg)
+            time.sleep(0.1)
+ 
+        msg.linear.x = 0.0
+        msg.angular.z = 0.0
+        self.publisher_.publish(msg)
     def pen_up(self):
         self.set_pen(off=True)
 
     def pen_down(self):
         self.set_pen(off=False)
 
+def structure(args=None):
+    msg=Twist()
+    td = TurtleDraw()
+    td.pen_down()
+    td.turn(60)
+    #square
+    td.draw_line(3)
+    td.turn(90)
+    td.draw_line(3)
+    td.turn(90)
+    td.draw_line(3)
+    td.turn(90)
+    td.draw_line(3)
+    td.turn(90)
+    #Sq done
+    for _ in range(4):
+        td.draw_line(0.75)
+        td.turn(-90)
+        td.draw_line(3)
+        td.turn(180)
+        td.draw_line(0.5)
+        td.turn(90)
+        td.draw_circle(0.5)
+        td.turn(-90)
+        td.draw_line(0.5)
+        td.turn(-90)
+        td.draw_line(0.5)
+        td.turn(90)
+
 def main(args=None):
     rclpy.init(args=args)
     turtle_draw = TurtleDraw()
     #Sample template to execute functions
-    turtle_draw.pen_down()
-    turtle_draw.draw_line() 
-    turtle_draw.pen_up()
-    turtle_draw.draw_circle()
+    #turtle_draw.pen_down()
+    #turtle_draw.draw_line(4,9) 
+    #turtle_draw.pen_up()
+    #turtle_draw.draw_circle()
+    structure()
     
     turtle_draw.destroy_node()
     rclpy.shutdown()
